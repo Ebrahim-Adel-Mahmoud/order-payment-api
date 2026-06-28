@@ -46,25 +46,9 @@ php artisan serve
 
 ## Authentication
 
-All protected routes require `Authorization: Bearer <token>`.
+Public auth routes: `POST /api/auth/register`, `POST /api/auth/login`.
 
-```bash
-# Register
-POST /api/auth/register
-{
-  "name": "John Doe",
-  "email": "john@example.com",
-  "password": "password123",
-  "password_confirmation": "password123"
-}
-
-# Login
-POST /api/auth/login
-{
-  "email": "john@example.com",
-  "password": "password123"
-}
-```
+Protected routes require `Authorization: Bearer <token>`.
 
 Use the returned `access_token` in subsequent requests.
 
@@ -86,11 +70,119 @@ Use the returned `access_token` in subsequent requests.
 | Payments | `GET /api/payments` | All payments |
 | Payments | `GET /api/payments/{id}` | Payment details |
 
-### Request format
+## API Requests & Responses
 
-JSON bodies use snake_case.
+JSON bodies use snake_case. Paginated list responses include `data`, `links`, and `meta`.
 
-**Create order example** (`customer_name` / `customer_email` come from the authenticated user; price comes from the product catalog):
+### Auth
+
+**Register** — `POST /api/auth/register`
+
+Request:
+
+```json
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "password123",
+  "password_confirmation": "password123"
+}
+```
+
+Response `201`:
+
+```json
+{
+  "message": "User registered successfully.",
+  "data": {
+    "user": {
+      "id": 1,
+      "name": "John Doe",
+      "email": "john@example.com"
+    },
+    "access_token": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+    "token_type": "bearer",
+    "expires_in": 3600
+  }
+}
+```
+
+**Login** — `POST /api/auth/login`
+
+Request:
+
+```json
+{
+  "email": "john@example.com",
+  "password": "password123"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "user": {
+    "id": 1,
+    "name": "John Doe",
+    "email": "john@example.com"
+  },
+  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+  "token_type": "bearer",
+  "expires_in": 3600
+}
+```
+
+**Login error** — `401`:
+
+```json
+{
+  "message": "Invalid email or password."
+}
+```
+
+**Logout** — `POST /api/auth/logout` → `200`:
+
+```json
+{
+  "message": "Successfully logged out."
+}
+```
+
+### Products
+
+**List products** — `GET /api/products` (public)
+
+Response `200`:
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "product_name": "Widget",
+      "quantity": 100,
+      "price": "10.00"
+    },
+    {
+      "id": 2,
+      "product_name": "Gadget",
+      "quantity": 75,
+      "price": "5.50"
+    }
+  ],
+  "links": { "first": "...", "last": "...", "prev": null, "next": null },
+  "meta": { "current_page": 1, "last_page": 1, "per_page": 15, "total": 5 }
+}
+```
+
+### Orders
+
+**Create order** — `POST /api/orders`
+
+`customer_name` and `customer_email` are taken from the authenticated user. Item price comes from the product catalog.
+
+Request:
 
 ```json
 {
@@ -100,7 +192,48 @@ JSON bodies use snake_case.
 }
 ```
 
-**Update order example:**
+Response `201`:
+
+```json
+{
+  "data": {
+    "id": 1,
+    "user_id": 1,
+    "customer_name": "John Doe",
+    "customer_email": "john@example.com",
+    "status": "pending",
+    "total": "20.00",
+    "items": [
+      {
+        "id": 1,
+        "product_id": 1,
+        "product_name": "Widget",
+        "quantity": 2,
+        "price": "10.00",
+        "line_total": "20.00"
+      }
+    ],
+    "payments": [],
+    "created_at": "2026-06-26T12:00:00+00:00",
+    "updated_at": "2026-06-26T12:00:00+00:00"
+  }
+}
+```
+
+**Validation error** — `422`:
+
+```json
+{
+  "message": "The product field is required.",
+  "errors": {
+    "items.0.product_id": ["The product field is required."]
+  }
+}
+```
+
+**Update order** — `PATCH /api/orders/{id}`
+
+Request:
 
 ```json
 {
@@ -111,7 +244,153 @@ JSON bodies use snake_case.
 }
 ```
 
-**Seeded products** (`ProductSeeder`) — pick `product_id` from `GET /api/products`:
+Response `200`: same shape as create order response with updated fields.
+
+**Delete order** — `DELETE /api/orders/{id}` → `204` (empty body)
+
+**Delete blocked (has payments)** — `422`:
+
+```json
+{
+  "message": "Orders with associated payments cannot be deleted."
+}
+```
+
+**List orders** — `GET /api/orders?status=confirmed`
+
+Response `200`:
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "customer_name": "John Doe",
+      "customer_email": "john@example.com",
+      "status": "confirmed",
+      "total": "20.00",
+      "items": [
+        {
+          "id": 1,
+          "product_id": 1,
+          "product_name": "Widget",
+          "quantity": 2,
+          "price": "10.00",
+          "line_total": "20.00"
+        }
+      ],
+      "payments": [],
+      "created_at": "2026-06-26T12:00:00+00:00",
+      "updated_at": "2026-06-26T12:02:00+00:00"
+    }
+  ],
+  "links": { "first": "...", "last": "...", "prev": null, "next": null },
+  "meta": { "current_page": 1, "last_page": 1, "per_page": 15, "total": 1 }
+}
+```
+
+**Get order** — `GET /api/orders/{id}` → `200`: single order object (same shape as one item in the list `data` array above).
+
+**Unauthorized** — missing or invalid token → `401`:
+
+```json
+{
+  "message": "Unauthenticated."
+}
+```
+
+### Payments
+
+**Process payment** — `POST /api/orders/{id}/payments`
+
+Request:
+
+```json
+{
+  "method": "credit_card",
+  "card_last_four": "4242"
+}
+```
+
+Response `201`:
+
+```json
+{
+  "data": {
+    "id": 1,
+    "order_id": 1,
+    "status": "successful",
+    "method": "credit_card",
+    "amount": "20.00",
+    "transaction_reference": "cc_ABC123XYZ",
+    "gateway_response": {
+      "gateway": "credit_card",
+      "message": "Simulated credit card charge approved."
+    },
+    "transactions": [
+      {
+        "id": 1,
+        "gateway": "credit_card",
+        "type": "charge",
+        "status": "successful",
+        "amount": "20.00",
+        "reference": "cc_ABC123XYZ",
+        "request_payload": { "card_last_four": "4242" },
+        "response_payload": {
+          "gateway": "credit_card",
+          "message": "Simulated credit card charge approved."
+        },
+        "created_at": "2026-06-26T12:05:00+00:00"
+      }
+    ],
+    "created_at": "2026-06-26T12:05:00+00:00",
+    "updated_at": "2026-06-26T12:05:00+00:00"
+  }
+}
+```
+
+**Payment on non-confirmed order** — `422`:
+
+```json
+{
+  "message": "Payments can only be processed for confirmed orders."
+}
+```
+
+**List payments** — `GET /api/payments` or `GET /api/orders/{id}/payments`
+
+Response `200`:
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "order_id": 1,
+      "status": "successful",
+      "method": "credit_card",
+      "amount": "20.00",
+      "transaction_reference": "cc_ABC123XYZ",
+      "gateway_response": {
+        "gateway": "credit_card",
+        "message": "Simulated credit card charge approved."
+      },
+      "transactions": [],
+      "created_at": "2026-06-26T12:05:00+00:00",
+      "updated_at": "2026-06-26T12:05:00+00:00"
+    }
+  ],
+  "links": { "first": "...", "last": "...", "prev": null, "next": null },
+  "meta": { "current_page": 1, "last_page": 1, "per_page": 15, "total": 1 }
+}
+```
+
+**Get payment** — `GET /api/payments/{id}` → `200`: single payment object (same shape as one item in the list `data` array above, with `transactions` loaded).
+
+### Seeded products
+
+Pick `product_id` from `GET /api/products` after running `php artisan db:seed`:
 
 | product_name | stock quantity | price |
 |--------------|----------------|-------|
@@ -121,7 +400,30 @@ JSON bodies use snake_case.
 | USB-C Hub | 40 | 45.00 |
 | Mechanical Keyboard | 25 | 89.99 |
 
-**Process payment example:**
+### Request format (quick reference)
+
+**Create order:**
+
+```json
+{
+  "items": [
+    { "product_id": 1, "quantity": 2 }
+  ]
+}
+```
+
+**Update order:**
+
+```json
+{
+  "status": "confirmed",
+  "items": [
+    { "product_id": 2, "quantity": 1 }
+  ]
+}
+```
+
+**Process payment:**
 
 ```json
 {
@@ -234,7 +536,8 @@ Tests use MySQL database `order_payment_api_testing` (configured in `phpunit.xml
 ## Documentation
 
 - Postman collection: `docs/order-payment-api.postman_collection.json`
-- Import into Postman and set collection variable `baseUrl` + `token`
+- Import into Postman, set `baseUrl`, then run: **Login** or **Register** → **List Products** → **Create Order** → **Confirm Order** → **Process Payment**
+- Collection variables auto-set: `token`, `productId`, `orderId`, `paymentId`
 
 ## Assumptions
 
