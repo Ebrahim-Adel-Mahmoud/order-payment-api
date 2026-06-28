@@ -19,7 +19,7 @@ Laravel 12 REST API for managing orders and payments, built with **JWT authentic
 ## Setup
 
 ```bash
-git clone <https://github.com/Ebrahim-Adel-Mahmoud/order-payment-api.git> order-payment-api
+git clone https://github.com/Ebrahim-Adel-Mahmoud/order-payment-api.git order-payment-api
 cd order-payment-api
 composer install
 cp .env.example .env
