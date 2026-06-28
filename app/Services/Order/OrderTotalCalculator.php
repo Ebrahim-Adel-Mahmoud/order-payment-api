@@ -32,7 +32,7 @@ final class OrderTotalCalculator
             $unitPrice = (string) $item->unit_price;
         } else {
             $quantity = (string) ($item['quantity'] ?? 0);
-            $unitPrice = (string) ($item['unit_price'] ?? $item['unitPrice'] ?? 0);
+            $unitPrice = (string) ($item['price'] ?? $item['unit_price'] ?? $item['unitPrice'] ?? 0);
         }
 
         return bcmul($quantity, $unitPrice, 2);

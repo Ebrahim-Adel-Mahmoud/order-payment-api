@@ -6,84 +6,42 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
-use App\Models\User;
+use App\Http\Resources\UserResource;
+use App\Services\Auth\AuthService;
 use Illuminate\Http\JsonResponse;
-use PHPOpenSourceSaver\JWTAuth\Facades\JWTAuth;
 
 final class AuthController extends Controller
 {
+    public function __construct(
+        private readonly AuthService $auth,
+    ) {
+    }
+
     public function register(RegisterRequest $request): JsonResponse
     {
-        $user = User::query()->create($request->validated());
-
-        $token = JWTAuth::fromUser($user);
+        $result = $this->auth->register($request->validated());
 
         return response()->json([
             'message' => 'User registered successfully.',
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-            ],
-            'access_token' => $token,
-            'token_type' => 'bearer',
-            'expires_in' => config('jwt.ttl') * 60,
+            'data' => UserResource::authToken($result),
         ], 201);
     }
 
     public function login(LoginRequest $request): JsonResponse
     {
-        $credentials = $request->only(['email', 'password']);
+        $result = $this->auth->login($request->only(['email', 'password']));
 
-        if (! $token = auth('api')->attempt($credentials)) {
-            return response()->json([
-                'message' => 'Invalid email or password.',
-            ], 401);
+        if ($result === null) {
+            return response()->json(['message' => 'Invalid email or password.'], 401);
         }
 
-        return $this->tokenResponse($token);
-    }
-
-    public function me(): JsonResponse
-    {
-        /** @var User $user */
-        $user = auth('api')->user();
-
-        return response()->json([
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-        ]);
+        return response()->json(UserResource::authToken($result));
     }
 
     public function logout(): JsonResponse
     {
-        auth('api')->logout();
+        $this->auth->logout();
 
-        return response()->json([
-            'message' => 'Successfully logged out.',
-        ]);
-    }
-
-    public function refresh(): JsonResponse
-    {
-        return $this->tokenResponse(auth('api')->refresh());
-    }
-
-    private function tokenResponse(string $token): JsonResponse
-    {
-        /** @var User $user */
-        $user = auth('api')->user();
-
-        return response()->json([
-            'access_token' => $token,
-            'token_type' => 'bearer',
-            'expires_in' => config('jwt.ttl') * 60,
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-            ],
-        ]);
+        return response()->json(['message' => 'Successfully logged out.']);
     }
 }

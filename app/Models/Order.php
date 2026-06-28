@@ -4,36 +4,13 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use ApiPlatform\Laravel\Eloquent\Filter\EqualsFilter;
-use ApiPlatform\Metadata\ApiResource;
-use ApiPlatform\Metadata\Delete;
-use ApiPlatform\Metadata\Get;
-use ApiPlatform\Metadata\GetCollection;
-use ApiPlatform\Metadata\Patch;
-use ApiPlatform\Metadata\Post;
-use ApiPlatform\Metadata\Put;
-use ApiPlatform\Metadata\QueryParameter;
 use App\Enums\OrderStatus;
-use App\Http\Requests\OrderFormRequest;
-use App\State\OrderProcessor;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
-#[ApiResource(
-    paginationItemsPerPage: 15,
-    rules: OrderFormRequest::class,
-    operations: [
-        new GetCollection(),
-        new Get(),
-        new Post(processor: OrderProcessor::class),
-        new Put(processor: OrderProcessor::class),
-        new Patch(processor: OrderProcessor::class),
-        new Delete(processor: OrderProcessor::class),
-    ],
-)]
-#[QueryParameter(key: 'status', filter: EqualsFilter::class, property: 'status')]
 class Order extends Model
 {
     use HasFactory;
@@ -44,19 +21,6 @@ class Order extends Model
         'customer_email',
         'status',
         'total',
-    ];
-
-    protected $visible = [
-        'id',
-        'user_id',
-        'customer_name',
-        'customer_email',
-        'status',
-        'total',
-        'items',
-        'payments',
-        'created_at',
-        'updated_at',
     ];
 
     protected function casts(): array
@@ -83,5 +47,11 @@ class Order extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    /** @return HasManyThrough<Product, OrderItem, $this> */
+    public function products(): HasManyThrough
+    {
+        return $this->hasManyThrough(Product::class, OrderItem::class);
     }
 }

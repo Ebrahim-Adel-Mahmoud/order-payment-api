@@ -24,7 +24,7 @@ final class PaymentApiTest extends TestCase
 
         $response = $this->postJson('/api/orders/'.$order->id.'/payments', [
             'method' => 'credit_card',
-            'cardLastFour' => '4242',
+            'card_last_four' => '4242',
         ], $this->apiHeaders());
 
         $response->assertStatus(422);
@@ -42,15 +42,23 @@ final class PaymentApiTest extends TestCase
 
         $response = $this->postJson('/api/orders/'.$order->id.'/payments', [
             'method' => 'credit_card',
-            'cardLastFour' => '4242',
+            'card_last_four' => '4242',
         ], $this->apiHeaders());
 
         $response->assertCreated()
-            ->assertJsonPath('status', 'successful')
-            ->assertJsonPath('method', 'credit_card');
+            ->assertJsonPath('data.status', 'successful')
+            ->assertJsonPath('data.method', 'credit_card')
+            ->assertJsonPath('data.transactions.0.type', 'charge')
+            ->assertJsonPath('data.transactions.0.gateway', 'credit_card');
 
         $this->assertDatabaseHas('payments', [
             'order_id' => $order->id,
+            'status' => 'successful',
+        ]);
+
+        $this->assertDatabaseHas('payment_transactions', [
+            'gateway' => 'credit_card',
+            'type' => 'charge',
             'status' => 'successful',
         ]);
     }

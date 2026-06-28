@@ -19,7 +19,7 @@ final class ProcessPaymentFormRequest extends FormRequest
     {
         return [
             'method' => ['required', 'string', Rule::in(array_keys(config('payment.gateways', [])))],
-            'cardLastFour' => ['nullable', 'string', 'size:4'],
+            'card_last_four' => ['nullable', 'string', 'size:4'],
         ];
     }
 

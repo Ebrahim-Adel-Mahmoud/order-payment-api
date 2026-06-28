@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Enums\OrderStatus;
-use App\Models\Order;
-use App\Models\Payment;
 use App\Models\User;
 use Tests\TestCase;
 
@@ -19,10 +16,13 @@ final class AuthTest extends TestCase
             'email' => 'jane@example.com',
             'password' => 'password123',
             'password_confirmation' => 'password123',
-        ]);
+        ], $this->apiHeaders());
 
         $response->assertCreated()
-            ->assertJsonStructure(['access_token', 'token_type', 'user']);
+            ->assertJsonStructure([
+                'message',
+                'data' => ['access_token', 'token_type', 'user'],
+            ]);
     }
 
     public function test_user_can_login(): void
@@ -35,9 +35,9 @@ final class AuthTest extends TestCase
         $response = $this->postJson('/api/auth/login', [
             'email' => 'login@example.com',
             'password' => 'password123',
-        ]);
+        ], $this->apiHeaders());
 
-        $response->assertOk()->assertJsonStructure(['access_token']);
+        $response->assertOk()->assertJsonStructure(['access_token', 'user']);
     }
 
     public function test_protected_order_route_requires_authentication(): void

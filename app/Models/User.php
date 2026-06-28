@@ -35,7 +35,7 @@ class User extends Authenticatable implements JWTSubject
         ];
     }
 
-    public function getJWTIdentifier(): mixed
+    public function getJWTIdentifier(): int|string
     {
         return $this->getKey();
     }

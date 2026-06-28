@@ -1,14 +1,13 @@
 # Order & Payment Management API
 
-Laravel 12 REST API for managing orders and payments, built with **API Platform**, **JWT authentication**, and an extensible **Strategy Pattern** for payment gateways.
+Laravel 12 REST API for managing orders and payments, built with **JWT authentication** and an extensible **Strategy Pattern** for payment gateways.
 
 ## Features
 
-- JWT authentication (register, login, logout, refresh, me)
-- Order CRUD with server-side total calculation
+- JWT authentication (register, login, logout)
+- Product catalog seeded via `ProductSeeder` (read-only API listing)
 - Payment processing via pluggable gateways (`credit_card`, `paypal`)
-- Business rules enforced in state processors/services
-- Auto-generated OpenAPI docs (Swagger UI)
+- Business rules enforced in services
 - PHPUnit unit & feature tests
 
 ## Requirements
@@ -35,20 +34,19 @@ CREATE DATABASE order_payment_api;
 CREATE DATABASE order_payment_api_testing;
 ```
 
-Run migrations:
+Run migrations and seed products:
 
 ```bash
 php artisan migrate
+php artisan db:seed
 php artisan serve
 ```
 
 - API entrypoint: `http://127.0.0.1:8000/api`
-- Swagger UI: `http://127.0.0.1:8000/api/docs`
-- OpenAPI JSON: `http://127.0.0.1:8000/api/docs.json`
 
 ## Authentication
 
-All API Platform resources require `Authorization: Bearer <token>`.
+All protected routes require `Authorization: Bearer <token>`.
 
 ```bash
 # Register
@@ -76,11 +74,12 @@ Use the returned `access_token` in subsequent requests.
 |-------|----------|-------------|
 | Auth | `POST /api/auth/register` | Register user |
 | Auth | `POST /api/auth/login` | Login & receive JWT |
-| Auth | `GET /api/auth/me` | Current user |
+| Auth | `POST /api/auth/logout` | Logout |
+| Products | `GET /api/products` | List active seeded products (public) |
 | Orders | `GET /api/orders` | List orders (paginated, filter `?status=`) |
 | Orders | `POST /api/orders` | Create order |
 | Orders | `GET /api/orders/{id}` | Get order |
-| Orders | `PATCH /api/orders/{id}` | Update order |
+| Orders | `PUT/PATCH /api/orders/{id}` | Update order |
 | Orders | `DELETE /api/orders/{id}` | Delete order (blocked if payments exist) |
 | Payments | `POST /api/orders/{id}/payments` | Process payment |
 | Payments | `GET /api/orders/{id}/payments` | Payments for order |
@@ -89,48 +88,83 @@ Use the returned `access_token` in subsequent requests.
 
 ### Request format
 
-API Platform uses camelCase in JSON bodies when `SnakeCaseToCamelCaseNameConverter` is enabled.
+JSON bodies use snake_case.
 
-**Create order example:**
+**Create order example** (`customer_name` / `customer_email` come from the authenticated user; price comes from the product catalog):
 
 ```json
 {
-  "customerName": "John Doe",
-  "customerEmail": "john@example.com",
   "items": [
-    { "productName": "Widget", "quantity": 2, "unitPrice": "15.50" }
+    { "product_id": 1, "quantity": 2 }
   ]
 }
 ```
+
+**Update order example:**
+
+```json
+{
+  "status": "confirmed",
+  "items": [
+    { "product_id": 2, "quantity": 1 }
+  ]
+}
+```
+
+**Seeded products** (`ProductSeeder`) — pick `product_id` from `GET /api/products`:
+
+| product_name | stock quantity | price |
+|--------------|----------------|-------|
+| Widget | 100 | 10.00 |
+| Gadget | 75 | 5.50 |
+| Wireless Mouse | 50 | 29.99 |
+| USB-C Hub | 40 | 45.00 |
+| Mechanical Keyboard | 25 | 89.99 |
 
 **Process payment example:**
 
 ```json
 {
   "method": "credit_card",
-  "cardLastFour": "4242"
+  "card_last_four": "4242"
 }
 ```
 
 ## Business Rules
 
-1. Payments can only be processed for orders with `status = confirmed`.
-2. Orders with associated payments cannot be deleted.
-3. Order totals and line totals are calculated server-side.
+1. Products catalog is seeded and listed via public `GET /api/products`.
+2. Create order sends `product_id` + `quantity` only; price is read from the product catalog.
+3. `customer_name` and `customer_email` on the order are taken from the authenticated user.
+4. Each order item links to a product via `product_id` (FK on `order_items`).
+5. Payments can only be processed for orders with `status = confirmed`.
+6. Orders with associated payments cannot be deleted.
+7. Order totals and line totals are calculated server-side.
+
+### Data model relationships
+
+```
+User 1──* Order 1──* OrderItem *──1 Product
+Order 1──* Payment
+Payment 1──* PaymentTransaction
+```
 
 ## Payment Gateway Extensibility
 
-The payment system follows **SOLID** principles and the **Strategy Pattern**.
+The payment system follows **SOLID** principles and the **Strategy Pattern**. Each charge is persisted as a **payment transaction** so gateway activity is auditable without changing core orchestration code.
 
 ### Architecture
 
 ```
-PaymentService
+PaymentService (DB transaction)
+  ├── PaymentRepository          → payments record
+  ├── PaymentTransactionRepository → gateway attempt log
   └── PaymentGatewayManager (Factory/Registry)
-        └── PaymentGatewayInterface
+        └── PaymentGatewayInterface (Strategy)
               ├── CreditCardGateway (Adapter)
               └── PaypalGateway (Adapter)
 ```
+
+**Flow:** create payment (pending) → log transaction (pending) → resolve gateway strategy → charge → update transaction + payment from `PaymentResult`.
 
 ### Adding a new gateway (3 steps)
 
@@ -169,7 +203,7 @@ final class StripeGateway implements PaymentGatewayInterface
 STRIPE_SECRET_KEY=sk_test_...
 ```
 
-No changes are required in controllers, processors, or `PaymentService` (**Open/Closed Principle**).
+No changes are required in controllers or `PaymentService` (**Open/Closed Principle**).
 
 Optional refund support: implement the separate `Refundable` interface only for gateways that support refunds (**Interface Segregation Principle**).
 
@@ -177,7 +211,7 @@ Optional refund support: implement the separate `Refundable` interface only for 
 
 | Principle / Pattern | Implementation |
 |---------------------|----------------|
-| **SRP** | Form Requests (validation), Processors (orchestration), Services (business rules), Gateways (provider logic) |
+| **SRP** | Form Requests (validation), Controllers (HTTP), Repositories (data access), Services (business rules), Gateways (provider logic) |
 | **OCP** | New gateways via config + new class only |
 | **LSP** | All gateways interchangeable via `PaymentGatewayInterface` |
 | **ISP** | Small `PaymentGatewayInterface`; optional `Refundable` |
@@ -186,7 +220,8 @@ Optional refund support: implement the separate `Refundable` interface only for 
 | **Factory/Registry** | `PaymentGatewayManager` |
 | **Adapter** | Gateways map external responses to `PaymentResult` |
 | **DTO** | `PaymentContext`, `PaymentResult` |
-| **Service Layer** | `PaymentService` |
+| **Repository** | `UserRepository`, `ProductRepository`, `OrderRepository`, `PaymentRepository`, `PaymentTransactionRepository` |
+| **Service Layer** | `AuthService`, `ProductService`, `OrderService`, `PaymentService` |
 
 ## Testing
 
@@ -205,5 +240,5 @@ Tests use MySQL database `order_payment_api_testing` (configured in `phpunit.xml
 
 - JWT is used instead of Sanctum/Passport (required by the task spec).
 - Payment gateways are simulated (no real external API calls).
-- JSON camelCase is the primary request/response format; JSON-LD is also supported.
+- JSON snake_case is used for request/response fields.
 - MySQL is used for development and testing.
