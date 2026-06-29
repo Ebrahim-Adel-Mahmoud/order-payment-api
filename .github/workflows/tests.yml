@@ -62,4 +62,5 @@ jobs:
           DB_DATABASE: order_payment_api_testing
           DB_USERNAME: root
           DB_PASSWORD: ""
+          JWT_SECRET: "3wYvR9zP2bN5vC7xS1qK4mJ8fD0gL3nB" 
         run: php artisan test
